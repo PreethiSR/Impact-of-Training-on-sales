@@ -1,0 +1,538 @@
+---
+title: "Final Code"
+author: "Preethi SR"
+date: "November 27, 2017"
+output: html_document
+---
+# Set working directory
+```{r}
+setwd("~/Documents/r_workspace/project/final")
+```
+
+# Read data files
+```{r}
+library(gdata)
+StoreAttr=read.csv("Store Attributes.csv", header=TRUE)
+SurveyData=read.csv("Survey data.csv",header=TRUE)
+TransactionData <- read.table("Transaction-HR data FY11-FY14.txt", header=TRUE, 
+  	sep="\t")
+TrainingFY12=read.xls("Training Completion FY12.xls",header=TRUE)
+TrainingFY13=read.xls("Training Completion FY13.xlsx", header=TRUE)
+```
+
+# Remove duplicate rows from each data file
+```{r}
+# Choosing a subset, such that all the duplicates of one row are removed and only the 1 original row is left in the subset.
+StoreAttr_U = subset(StoreAttr, !duplicated(StoreAttr))
+SurveyData_U = subset(SurveyData, !duplicated(SurveyData))
+TransactionData_U = subset(TransactionData, !duplicated(TransactionData))
+TrainingFY12_U = subset(TrainingFY12, !duplicated(TrainingFY12))
+TrainingFY13_U = subset(TrainingFY13, !duplicated((TrainingFY13)))
+```
+
+# Add FY & Return amount in transationdata
+```{r}
+# Convert the month_index into the annual_month_index such that for the Fiscal Year(FY), August will be the 1st month and July will be the 12th month. In the data, month_index ranges from 13 to 59, where 13 corresponds to August 2010.
+TransactionData_U$annual_month_index<-(((TransactionData_U$month_index-1)%%12)+1)
+# FY is from August to July, and August 2010-July 2011 will form the FY 2011. Month_index 6 corresponds to January. So anything from August to December will have the FY as the Transaction year + 1. Doing this, since our training data is according to the FYs
+TransactionData_U$FY <- ifelse(TransactionData_U$annual_month_index<6,TransactionData_U$year+1, TransactionData_U$year)
+# Getting the total dollar value, the total return_amount if the return was made.
+TransactionData_U$return_amt <- TransactionData_U$net_purchase_amount*TransactionData_U$return
+```
+
+# Merge Store Data with the Transaction Data, using store_number as the values to match in both databases.
+```{r}
+AS<- merge(TransactionData_U, StoreAttr_U, by.x = c("store_number"), by.y = c("store_number"), all.x = TRUE)
+```
+
+# Updating Training Data
+```{r}
+# Add FY = 2012 to each row of TrainingFY12 data. 
+TrainingFY12_U$FY <- 2012
+
+# Convert each training value to a dummy variable where 0 = particular training not taken, and 1 = particular training taken.
+TrainingFY12_U$Warranty.<-ifelse(TrainingFY12_U$Warranty.=="Yes",1,ifelse(TrainingFY12_U$Warranty.=="No",0,0))
+TrainingFY12_U$Credit.<-ifelse(TrainingFY12_U$Credit.=="Yes",1,ifelse(TrainingFY12_U$Credit.=="No",0,0))
+TrainingFY12_U$Spec..Ev.<-ifelse(TrainingFY12_U$Spec..Ev.=="Yes",1,ifelse(TrainingFY12_U$Spec..Ev.=="No",0,0))
+
+#Get the total number of trainings taken by each employee.
+TrainingFY12_U$TrainingNumbers = TrainingFY12_U$Warranty.+TrainingFY12_U$Credit.+ TrainingFY12_U$Spec..Ev.
+
+# Add FY = 2013 to each row of TrainingFY13 data. 
+TrainingFY13_U$FY <- 2013
+
+# Convert each training value to a dummy variable where 0 = particular training not taken, and 1 = particular training taken.
+TrainingFY13_U$Warranties<-ifelse(TrainingFY13_U$Warranties=="Yes",1,ifelse(TrainingFY13_U$Warranties=="No",0,0))
+TrainingFY13_U$Credit<-ifelse(TrainingFY13_U$Credit=="Yes",1,ifelse(TrainingFY13_U$Credit=="No",0,0))
+TrainingFY13_U$Celebrity.Brand<-ifelse(TrainingFY13_U$Celebrity.Brand=="Yes",1,ifelse(TrainingFY13_U$Celebrity.Brand=="No",0,0))
+TrainingFY13_U$Watches<-ifelse(TrainingFY13_U$Watches=="Yes",1,ifelse(TrainingFY13_U$Watches=="No",0,0))
+TrainingFY13_U$Color<-ifelse(TrainingFY13_U$Color=="Yes",1,ifelse(TrainingFY13_U$Color=="No",0,0))
+TrainingFY13_U$Service...Selling<-ifelse(TrainingFY13_U$Service...Selling=="Yes",1,ifelse(TrainingFY13_U$Service...Selling=="No",0,0))
+TrainingFY13_U$Celebration<-ifelse(TrainingFY13_U$Celebration=="Yes",1,ifelse(TrainingFY13_U$Celebration=="No",0,0))
+TrainingFY13_U$Sp..Events<-ifelse(TrainingFY13_U$Sp..Events=="Yes",1,ifelse(TrainingFY13_U$Sp..Events=="No",0,0))
+
+#Get the total number of trainings taken by each employee.
+TrainingFY13_U$TrainingNumbers = TrainingFY13_U$Warranties+TrainingFY13_U$Credit+ TrainingFY13_U$Sp..Events+TrainingFY13_U$Celebrity.Brand+TrainingFY13_U$Celebration+TrainingFY13_U$Watches+TrainingFY13_U$Color+TrainingFY13_U$Service...Selling
+```
+## Merge TrainingFY12 Data using Sales Associate Id and FY as the matching parameter for the merge.
+```{r}
+AST12 <- merge(AS, TrainingFY12_U,by.x = c("sales_assoc_1","FY"), by.y = c("EID", "FY"), all.x = TRUE)
+AST12[c("Store..","State", "Start.Date", "Rehire", "Status")] <-list(NULL) # drop these columns. Status is all active in the training file, and there is no way to know if he was in active status for the entire year. Dropping store and state also, as there are only 191 observations where the state or store varies. Start.date and rehire are not in the date form, so assuming the data to be ambiguous.
+
+# Rename the columns after the merge
+colnames(AST12)[39]<-"jobname12"
+colnames(AST12)[40]<-"category12"
+colnames(AST12)[41]<-"Training_warranty12"
+colnames(AST12)[42]<-"Training_credit12"
+colnames(AST12)[43]<-"Training_special_events12"
+colnames(AST12)[44]<-"Training_numbers12"
+```
+## Merge TrainingFY13 Data using Sales Associate Id and FY as the matching parameter for the merge.
+```{r}
+AST13 <- merge(AST12, TrainingFY13_U,by.x = c("sales_assoc_1","FY"), by.y = c("EID", "FY"), all.x = TRUE)
+
+# drop these columns. Status is all active in the training file, and there is no way to know if he was in active status for the entire year. Dropping store and state also, as there are only 211 observations where the state or store varies. Start.date and rehire are not in the date form, so assuming the data to be ambiguous.
+AST13[c("Store..","State","Start.Date", "Rehire", "Status")] <-list(NULL)
+
+# Rename the columns after the merge
+colnames(AST13)[45]<-"jobname13"
+colnames(AST13)[46]<-"category13"
+colnames(AST13)[47]<-"Training_warranties13"
+colnames(AST13)[48]<-"Training_credit13"
+colnames(AST13)[49]<-"Training_celebrity_Brand13"
+colnames(AST13)[50]<-"Training_celebration13"
+colnames(AST13)[51]<-"Training_watches13"
+colnames(AST13)[52]<-"Training_color13"
+colnames(AST13)[53]<-"Training_special_events13"
+colnames(AST13)[54]<-"Training_service_selling13"
+colnames(AST13)[55]<-"Training_numbers13"
+```
+
+# Merge Survey Data using customer_id, transaction_id as the matching parameter for the merge
+```{r}
+ASTS <- merge(AST13, SurveyData_U,by.x = c("customer_id","transaction_id"), by.y = c("customer_id", "transaction_id"), all.x = TRUE)
+
+#Removing purchase_date.y and store_number.y as they are reduntant columns.
+ASTS[c("purchase_date.y", "store_number.y")] <-list(NULL)
+
+# Rename the columns after the merge
+colnames(ASTS)[5]<-"store_number"
+colnames(ASTS)[6]<-"purchase_date"
+```
+
+# Add a binary trained or untrained column
+```{r}
+# If a person has even taken one training, the trained binary will be 1, otherwise it will be 0
+ASTS$trained<-ifelse(ASTS$Training_warranty12==1|ASTS$Training_credit12==1|ASTS$Training_special_events12==1|ASTS$Training_warranties13==1|ASTS$Training_credit13==1|ASTS$Training_celebrity_Brand13==1|ASTS$Training_celebration13==1|ASTS$Training_watches13==1|ASTS$Training_color13==1|ASTS$Training_special_events13==1|ASTS$Training_service_selling13==1,1,0)
+
+# Converting the NAs in the training numbers and trained field to 0 since no training information is considered as training not taken
+# this is required as otherwise all NA data will get ignored for regression
+ASTS$Training_numbers12 = ifelse(is.na(ASTS$Training_numbers12),0, ASTS$Training_numbers12)
+ASTS$Training_numbers13 = ifelse(is.na(ASTS$Training_numbers13),0, ASTS$Training_numbers13)
+ASTS$trained = ifelse( is.na(ASTS$trained), 0, ASTS$trained)
+# Get the total number of trainings for each row. This is done to keep only 1 variable for the number of trainings taken.
+ASTS$TrainedTotal = ASTS$Training_numbers12 + ASTS$Training_numbers13
+```
+
+# Converting all blanks in the merged data to NAs
+```{r}
+ASTSNoBlanks<- ASTS
+ASTSNoBlanks$SA_MartialStatus<-ifelse(ASTSNoBlanks$SA_MartialStatus=="M",1,ifelse(ASTSNoBlanks$SA_MartialStatus=="S",0,NA))
+ASTSNoBlanks$SA_Dependent<-ifelse(ASTSNoBlanks$SA_Dependent=="Yes",1,NA)
+ASTSNoBlanks$SA_gender<-ifelse(ASTSNoBlanks$SA_gender=="F",1,ifelse(ASTSNoBlanks$SA_gender=="M",0,NA)) 
+ASTSNoBlanks$SA_AssignmentCategory<-ifelse(ASTSNoBlanks$SA_AssignmentCategory=="FR",4,ifelse(ASTSNoBlanks$SA_AssignmentCategory=="PR",3,ifelse(ASTSNoBlanks$SA_AssignmentCategory=="FT",2,ifelse(ASTSNoBlanks$SA_AssignmentCategory=="PT",1,NA))))
+ASTSNoBlanks$child<-ifelse(ASTSNoBlanks$child=="Y",1,ifelse(ASTSNoBlanks$child=="N",0,NA))  
+ASTSNoBlanks$homeowner_code<-ifelse(ASTSNoBlanks$homeowner_code=="O",1,ifelse(ASTSNoBlanks$homeowner_code=="R",0,NA))  
+ASTSNoBlanks$gender<-ifelse(ASTSNoBlanks$gender=="F",1,ifelse(ASTSNoBlanks$gender=="M",0,NA))
+ASTSNoBlanks$ethnic_code<-ifelse(ASTSNoBlanks$ethnic_code=="B",1,
+                   ifelse(ASTSNoBlanks$ethnic_code=="D",2,
+                   ifelse(ASTSNoBlanks$ethnic_code=="F",3,
+                   ifelse(ASTSNoBlanks$ethnic_code=="G",4,
+                   ifelse(ASTSNoBlanks$ethnic_code=="H",5,
+                   ifelse(ASTSNoBlanks$ethnic_code=="I",6,
+                   ifelse(ASTSNoBlanks$ethnic_code=="J",7,
+                   ifelse(ASTSNoBlanks$ethnic_code=="M",8,
+                   ifelse(ASTSNoBlanks$ethnic_code=="N",9,
+                   ifelse(ASTSNoBlanks$ethnic_code=="O",10,
+                   ifelse(ASTSNoBlanks$ethnic_code=="P",11,
+                   ifelse(ASTSNoBlanks$ethnic_code=="R",12,
+                   ifelse(ASTSNoBlanks$ethnic_code=="S",13,
+                   ifelse(ASTSNoBlanks$ethnic_code=="U",14,
+                   ifelse(ASTSNoBlanks$ethnic_code=="X",15,
+                   ifelse(ASTSNoBlanks$ethnic_code=="Z",16,                            NA))))))))))))))))
+ASTSNoBlanks$ST<-ifelse(ASTSNoBlanks$ST=="AR",1,
+                   ifelse(ASTSNoBlanks$ST=="AZ",2,
+                   ifelse(ASTSNoBlanks$ST=="FL",3,
+                   ifelse(ASTSNoBlanks$ST=="IA",4,
+                   ifelse(ASTSNoBlanks$ST=="IL",5,
+                   ifelse(ASTSNoBlanks$ST=="IN",6,
+                   ifelse(ASTSNoBlanks$ST=="MA",7,
+                   ifelse(ASTSNoBlanks$ST=="MD",8,
+                   ifelse(ASTSNoBlanks$ST=="MI",9,
+                   ifelse(ASTSNoBlanks$ST=="OK",10,
+                   ifelse(ASTSNoBlanks$ST=="PA",11,
+                   ifelse(ASTSNoBlanks$ST=="PR",12,
+                   ifelse(ASTSNoBlanks$ST=="SD",13,
+                   ifelse(ASTSNoBlanks$ST=="TX",14,
+                   ifelse(ASTSNoBlanks$ST=="VA",15,
+                   ifelse(ASTSNoBlanks$ST=="WA",16,                                    NA))))))))))))))))
+ASTSNoBlanks$MallGrade<-ifelse(ASTSNoBlanks$MallGrade=="A",4,ifelse(ASTSNoBlanks$MallGrade=="B",3,ifelse(ASTSNoBlanks$MallGrade=="C",2,ifelse(ASTSNoBlanks$MallGrade=="F",1,NA))))
+ASTSNoBlanks$MajorCompetitorPresent<-ifelse(ASTSNoBlanks$MajorCompetitorPresent=="Yes",1,ifelse(ASTSNoBlanks$MajorCompetitorPresent=="No",0,NA)) 
+ASTSNoBlanks$jobname12<-ifelse(ASTSNoBlanks$jobname12=="Jewelry Consultant",4,ifelse(ASTSNoBlanks$jobname12=="SM",3,ifelse(ASTSNoBlanks$jobname12=="TASM",2,ifelse(ASTSNoBlanks$jobname12=="Cashier",1,NA))))
+ASTSNoBlanks$category12<-ifelse(ASTSNoBlanks$category12=="FT-Reg",4,ifelse(ASTSNoBlanks$category12=="PT-Reg",3,ifelse(ASTSNoBlanks$category12=="FT-Temp",2,ifelse(ASTSNoBlanks$category12=="PT-Temp",1,NA))))
+ASTSNoBlanks$category13<-ifelse(ASTSNoBlanks$category13=="FT-Reg",4,ifelse(ASTSNoBlanks$category13=="PT-Reg",3,ifelse(ASTSNoBlanks$category13=="FT-Temp",2,ifelse(ASTSNoBlanks$category13=="PT-Temp",1,NA))))
+ASTSNoBlanks$jobname13<-ifelse(ASTSNoBlanks$jobname13=="JC",4,ifelse(ASTSNoBlanks$jobname13=="SM",3,ifelse(ASTSNoBlanks$jobname13=="TASM",2,ifelse(ASTSNoBlanks$jobname13=="Cashier",1,NA))))
+```
+
+# Aggregate Data to get the total of net_pruchase_amount, number of returns and return_amount per transaction.
+# We aggregated it initially and r 
+```{r}
+A1 <- aggregate(ASTSNoBlanks[c("net_purchase_amount","return","return_amt")], by=list( ASTSNoBlanks$sales_assoc_1, ASTSNoBlanks$FY, ASTSNoBlanks$time_to_return, ASTSNoBlanks$gender, ASTSNoBlanks$age_band, ASTSNoBlanks$est_income_code, ASTSNoBlanks$ethnic_code, ASTSNoBlanks$homeowner_code, ASTSNoBlanks$length_of_residence, ASTSNoBlanks$child,ASTSNoBlanks$SA_gender, ASTSNoBlanks$SA_AssignmentCategory, ASTSNoBlanks$SA_YearsofService, ASTSNoBlanks$SA_MartialStatus, ASTSNoBlanks$summary, ASTSNoBlanks$annual_month_index,ASTSNoBlanks$ST, ASTSNoBlanks$MallGrade, ASTSNoBlanks$MallSalesSF, ASTSNoBlanks$StoreSqFt,ASTSNoBlanks$TotalCases, ASTSNoBlanks$PadCount, ASTSNoBlanks$MajorCompetitorPresent,ASTSNoBlanks$trained, ASTSNoBlanks$TrainedTotal),sum)
+
+# Rename the columns after aggregating
+colnames(A1)[1]<-"EID"
+colnames(A1)[2]<-"FY"
+colnames(A1)[3]<-"time_to_return"
+colnames(A1)[4]<-"cust_gender"
+colnames(A1)[5]<-"cust_ageband"
+colnames(A1)[6]<-"cust_incomecode"
+colnames(A1)[7]<-"cust_ethniccode"
+colnames(A1)[8]<-"cust_homeowner"
+colnames(A1)[9]<-"cust_lengthofresidence"
+colnames(A1)[10]<-"cust_child"
+colnames(A1)[11]<-"SA_gender"
+colnames(A1)[12]<-"SA_category"
+colnames(A1)[13]<-"SA_experience"
+colnames(A1)[14]<-"SA_married"
+colnames(A1)[15]<-"prod_category"
+colnames(A1)[16]<-"annual_month_index"
+colnames(A1)[17]<-"state"
+colnames(A1)[18]<-"mall_grade"
+colnames(A1)[19]<-"mall_sales_sqft"
+colnames(A1)[20]<-"store_sqft"
+colnames(A1)[21]<-"total_cases"
+colnames(A1)[22]<-"padcount"
+colnames(A1)[23]<-"competitor_presence"
+colnames(A1)[24]<-"trained"
+colnames(A1)[25]<-"trainedtotal"
+```
+##Check Correlation and VIF Values For Question 2
+```{r}
+ASTSNoBlanksvif <- A1
+# Remove the data for the FY 2014, since we do not have the training data for FY 2014, thus we do not know if the sales associate is trained or not in 2014. 
+ASTSNoBlanksvifT<- subset(ASTSNoBlanksvif,FY !=2014)
+library(usdm)
+# Checking the correlation with the Trained dummy variable.
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_grade, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases, A1$padcount,A1$competitor_presence, A1$trained, A1$return,A1$return_amt)
+cor(df)
+vif(df)
+## removing MallGrade 
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases, A1$padcount,A1$competitor_presence, A1$trained, A1$return,A1$return_amt)
+cor(df)
+vif(df)
+## removing pad-count
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases,A1$competitor_presence, A1$trained,A1$return,A1$return_amt)
+cor(df)
+vif(df)
+
+# Checking the Correlation with Trained total variable now. 
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_grade, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases, A1$padcount,A1$competitor_presence, A1$trainedtotal,A1$return,A1$return_amt)
+cor(df)
+vif(df)
+## removing Mall Grade
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases, A1$padcount,A1$competitor_presence,A1$trainedtotal, A1$return,A1$return_amt)
+cor(df)
+vif(df)
+## removing pad-count
+df=data.frame(A1$FY,A1$time_to_return, A1$cust_gender, A1$cust_ageband, A1$cust_incomecode,A1$cust_ethniccode,A1$cust_homeowner, A1$cust_lengthofresidence, A1$cust_child,A1$SA_gender,A1$SA_category,A1$SA_experience, A1$SA_married, A1$prod_category,A1$annual_month_index, A1$state, A1$mall_sales_sqft,A1$store_sqft,A1$total_cases,A1$competitor_presence, A1$trainedtotal,A1$return,A1$return_amt)
+cor(df)
+vif(df)
+```
+## Convert the type to factor for all factor variables.
+```{r}
+# All these are categorical variables. Makes sense to convert it to factors
+ASTSNoBlanks$FY<-as.factor(ASTSNoBlanks$FY)
+ASTSNoBlanks$return_store<-as.factor(ASTSNoBlanks$return_store)
+ASTSNoBlanks$gender<-as.factor(ASTSNoBlanks$gender)
+ASTSNoBlanks$age_band<-as.factor(ASTSNoBlanks$age_band)
+ASTSNoBlanks$est_income_code<-as.factor(ASTSNoBlanks$est_income_code)
+ASTSNoBlanks$ethnic_code<-as.factor(ASTSNoBlanks$ethnic_code)
+ASTSNoBlanks$homeowner_code<-as.factor(ASTSNoBlanks$homeowner_code)
+ASTSNoBlanks$child<-as.factor(ASTSNoBlanks$child)
+ASTSNoBlanks$year<-as.factor(ASTSNoBlanks$year)
+ASTSNoBlanks$month<-as.factor(ASTSNoBlanks$month)
+ASTSNoBlanks$SA_gender<-as.factor(ASTSNoBlanks$SA_gender)
+ASTSNoBlanks$SA_AssignmentCategory<-as.factor(ASTSNoBlanks$SA_AssignmentCategory)
+ASTSNoBlanks$SA_MartialStatus<-as.factor(ASTSNoBlanks$SA_MartialStatus)
+ASTSNoBlanks$SA_Dependent<-as.factor(ASTSNoBlanks$SA_Dependent)
+ASTSNoBlanks$summary<-as.factor(ASTSNoBlanks$summary)
+ASTSNoBlanks$annual_month_index<-as.factor(ASTSNoBlanks$annual_month_index)
+ASTSNoBlanks$ST<-as.factor(ASTSNoBlanks$ST)
+ASTSNoBlanks$MallGrade<-as.factor(ASTSNoBlanks$MallGrade)
+ASTSNoBlanks$MajorCompetitorPresent<-as.factor(ASTSNoBlanks$MajorCompetitorPresent)
+ASTSNoBlanks$jobname12<-as.factor(ASTSNoBlanks$jobname12)
+ASTSNoBlanks$category12<-as.factor(ASTSNoBlanks$category12)
+ASTSNoBlanks$jobname13<-as.factor(ASTSNoBlanks$jobname13)
+ASTSNoBlanks$category13<-as.factor(ASTSNoBlanks$category13)
+ASTSNoBlanks$trained<-as.factor(ASTSNoBlanks$trained)
+
+# Get the subset for FY to be less than 2014 only.
+#this is the final datset that we use for modelling
+ASTSNoBlanksT<-subset(ASTSNoBlanks,FY !=2014)
+```
+# Check for minimum ratio to run logit
+```{r}
+sum(ASTSNoBlanksT$return==1) #  105924
+sum(ASTSNoBlanksT$return==0) # 1532081
+# 27 unique variables , Min Ratio ()
+sum(ASTSNoBlanksT$return==1)/28 # 3783 
+# This min-ratio is greater than 20, so we can use the logit/probit model for our data
+```
+## Question 2
+
+```{r}
+library(MASS)
+library(QuantPsyc)
+
+# Logit model with the binary trained variable
+m0<-glm(return ~ trained +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + purchasebasketsize + ST ,family="binomial",data=ASTSNoBlanksT)
+summary(m0)
+step <- stepAIC(m0, direction="both") 
+step$anova
+
+# Logit model with no of trainings as key independent variable
+m1<-glm(return ~ factor(TrainedTotal) +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + purchasebasketsize + ST ,family="binomial",data=ASTSNoBlanksT)
+summary(m1)
+step <- stepAIC(m1, direction="both") 
+step$anova
+#The STEP AIC gave the Final Model as:
+return ~ factor(TrainedTotal) + log(1 + net_purchase_amount) + 
+    gender + age_band + child + summary + StoreSqFt + pressure
+# not removing all variables suggested by AIC as having those variables in the model conceptually makes sense 
+```
+
+# Logit  model
+```{r}
+library(msm)
+library(foreign)
+library(effects)
+
+# Model with binary trained variable
+logit1<-glm(return ~ trained +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize + ST ,data=ASTSNoBlanksT, family="binomial")
+summary(logit1)
+
+# Model with number of trainings as dependent variable
+logit1a<-glm(return ~ TrainedTotal +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize + ST ,data=ASTSNoBlanksT, family="binomial")
+summary(logit1a)
+
+AIC(logit1,logit1a)
+BIC(logit1,logit1a) ## USING NUMBER OF TRAININGS IS BETTER ACCORDING TO AIC and BIC
+```
+
+# Trying Different models by removing and adding variables 
+# USING TRAINED
+```{r}
+# Removing State
+logit2<-glm(return ~ trained +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize ,data=ASTSNoBlanksT, family="binomial")
+summary(logit2)
+
+# Comparing the two models
+AIC(logit1a,logit2)
+BIC(logit1a,logit2) # Logit2 model gives better results
+
+# Using the one with Trained Total as a quadratic term 
+logit2a<-glm(return ~ TrainedTotal +I(TrainedTotal^2)+log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ ethnic_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize,data=ASTSNoBlanksT, family="binomial")
+summary(logit2a)
+
+AIC(logit2a,logit2)
+BIC(logit2a,logit2) # LOGIT2a gives better AIC & BIC results.
+
+# Removing ethnic_code
+logit3<-glm(return ~ trained +log(1+net_purchase_amount)+ gender + age_band +homeowner_code+ child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize ,data=ASTSNoBlanksT, family="binomial")
+summary(logit3)
+
+AIC(logit3,logit2a)
+BIC(logit3,logit2a) # LOGIT3 gives better results.
+
+logit3a<-glm(return ~ TrainedTotal+ I(TrainedTotal^2) +log(1+net_purchase_amount)+ gender + age_band + child + annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + purchasebasketsize,data=ASTSNoBlanksT, family="binomial")
+summary(logit3a)
+AIC(logit3a,logit3)
+BIC(logit3a,logit3) # LOGIT3a gives better results. 
+```
+# Interacting Trained Variable with pressure. 
+
+# We have interacted trained variable with pressure as the level of pressure applied by a salesperson might have an impact on returns
+```{r}
+# Removed purchasebasketsize, child and added homeownercode
+logit4<- glm(return ~ trained*pressure +log(1+net_purchase_amount) +gender + age_band +homeowner_code+ annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure,data=ASTSNoBlanksT ,family="binomial" )
+summary(logit4) # Interaction not significant
+AIC(logit3a,logit4)
+BIC(logit3a,logit4)  # LOGIT3a gives better results.
+
+logit4a<- glm(return~TrainedTotal*pressure+ I(TrainedTotal^2) +log(1+net_purchase_amount) +gender + age_band +homeowner_code+ annual_month_index+SA_gender+SA_AssignmentCategory+ SA_YearsofService+ SA_MartialStatus + summary +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure,data=ASTSNoBlanksT ,family="binomial" )
+summary(logit4a)
+lrtest() ## LOGIT4a is better 
+ 
+```
+
+## The final model
+```{r}
+#Removed summary,SA_MartialStatus,SA_gender and added est_income_code
+logit5<- glm(return ~ trained*pressure +log(1+net_purchase_amount)+gender + age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure+ homeowner_code,data=ASTSNoBlanksT ,family="binomial" )
+#The effect of training on returns is higher 
+summary(logit5)
+AIC(logit4a,logit5) # logit4a gives better results
+BIC(logit4a,logit5) # LOGIT5 gives better results #We will go with logit5 as we have est_income_code is added in the logit5 
+
+with(logit5, null.deviance - deviance)
+with(logit5, df.null - df.residual)
+with(logit5, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE)) #Our Model is better than the null model
+
+logit5a<- glm(return ~ TrainedTotal*pressure +I(TrainedTotal^2)+ log(1+net_purchase_amount)+gender  +age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + homeowner_code,data=ASTSNoBlanksT ,family="binomial" )
+summary(logit5a)
+AIC(logit5a,logit5) 
+BIC(logit5a,logit5) # LOGIT5a gives better results.
+
+with(logit5a, null.deviance - deviance)
+with(logit5a, df.null - df.residual)
+with(logit5a, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))#Our model is better than the null model
+```
+
+## Predict the result.
+```{r}
+# Get the subset where all the NAs have been omitted from the set of variables in the data frame. NAs should not be there in the dataset for prediction
+ASTSNoBlanksTNoNAs = na.omit( data.frame(ASTSNoBlanksT$return, ASTSNoBlanksT$trained,ASTSNoBlanksT$pressure,ASTSNoBlanksT$gender, ASTSNoBlanksT$age_band, ASTSNoBlanksT$est_income_code, ASTSNoBlanksT$annual_month_index, ASTSNoBlanksT$SA_AssignmentCategory, ASTSNoBlanksT$SA_YearsofService, ASTSNoBlanksT$MallSalesSF, ASTSNoBlanksT$TotalCases, ASTSNoBlanksT$StoreSqFt, ASTSNoBlanksT$MajorCompetitorPresent, ASTSNoBlanksT$homeowner_code,ASTSNoBlanksT$net_purchase_amount, ASTSNoBlanksT$TrainedTotal ))
+#Rename the columns.
+colnames(ASTSNoBlanksTNoNAs)[1] <- "return"
+colnames(ASTSNoBlanksTNoNAs)[2] <- "trained"
+colnames(ASTSNoBlanksTNoNAs)[3] <- "pressure"
+colnames(ASTSNoBlanksTNoNAs)[4] <- "gender"
+colnames(ASTSNoBlanksTNoNAs)[5] <- "age_band"
+colnames(ASTSNoBlanksTNoNAs)[6] <- "est_income_code"
+colnames(ASTSNoBlanksTNoNAs)[7] <- "annual_month_index"
+colnames(ASTSNoBlanksTNoNAs)[8] <- "SA_AssignmentCategory"
+colnames(ASTSNoBlanksTNoNAs)[9] <- "SA_YearsofService"
+colnames(ASTSNoBlanksTNoNAs)[10] <- "MallSalesSF"
+colnames(ASTSNoBlanksTNoNAs)[11] <- "TotalCases"
+colnames(ASTSNoBlanksTNoNAs)[12] <- "StoreSqFt"
+colnames(ASTSNoBlanksTNoNAs)[13] <- "MajorCompetitorPresent"
+colnames(ASTSNoBlanksTNoNAs)[14] <- "homeowner_code"
+colnames(ASTSNoBlanksTNoNAs)[15] <- "net_purchase_amount"
+colnames(ASTSNoBlanksTNoNAs)[16] <- "trained_total"
+```
+
+#Prediction
+```{r}
+# Prediction with binary trained 
+pred = predict(logit5, data=ASTSNoBlanksTNoNAs,type="response")
+return_prediction <- ifelse(pred >= 0.5,1,0)  
+misClasificError <- mean(return_prediction != ASTSNoBlanksTNoNAs$return) 
+print(paste('Accuracy',1-misClasificError)) 
+## "Accuracy 0.873486682808717"
+table(ASTSNoBlanksTNoNAs$return, pred>=0.5)
+
+plot(effect(term = "trained:pressure", mod= logit5, xlevels = 2),multiline = TRUE)
+# The probability of return reduces by 33 percentage points when a salesperson is trained as  compared to a non-trained person, when high pressure is applied on the customer to buy a product 
+
+# Prediction with number of trainings 
+pred1 = predict(logit5a, data=ASTSNoBlanksTNoNAs,type="response")
+return_prediction1 <- ifelse(pred1 >= 0.5,1,0)  
+misClasificError <- mean(return_prediction1 != ASTSNoBlanksTNoNAs$return) 
+print(paste('Accuracy',1-misClasificError)) 
+## "Accuracy 0.873486682808717"
+table(ASTSNoBlanksTNoNAs$return, pred1>=0.5)
+##209 out of 1652 values are predicted inaccurately
+plot(effect(term = "TrainedTotal:pressure", mod= logit5a, xlevels = 5),multiline = TRUE)
+#As the Number of trainings increases, the probability of return decreases
+```
+# Heteroskadicity
+```{r}
+library(lmtest)
+library(sandwich)
+library(foreign)
+plot(pred,residuals(logit5), ylab="Residuals", xlab="Fitted values") # residual plot shows a pattern. Hence we run heteroskedacity test
+qqnorm(residuals(logit5)) # we have a specification problem
+gqtest(logit5)
+bptest(logit5)
+coeftest(logit5, vcov = vcovHC(logit5, "HC1")) #interaction between trained and pessure is still significant
+
+plot(pred,residuals(logit5a), ylab="Residuals", xlab="Fitted values") # residual plot shows a pattern. Hence we run heteroskedacity test
+qqnorm(residuals(logit5a)) # we have a specification problem
+gqtest(logit5a)
+bptest(logit5a) # Heteroskadicity 
+coeftest(logit5a, vcov = vcovHC(logit5a, "HC1"))
+```
+
+#Endogeniety check
+```{r}
+library(mfx)
+logitmfx(formula = return ~ trained*pressure +net_purchase_amount+gender + age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + homeowner_code,data=ASTSNoBlanksT) 
+# For the interpretation, we look at ggplot as we have an interaction variable in the model
+
+summary(lm(formula = return ~ trained*pressure +net_purchase_amount+gender + age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + homeowner_code,data=ASTSNoBlanksT))
+
+#coeffecients are quite similar- To find endogeneity, IV regression can be run on OLS model
+library(AER)
+library(foreign)
+
+#trained as endogenous and SA_gender as instrumental variable-we feel SA_gender could be a instrumental variable as females will be more motivated to take jewellry trainings as compared to male.
+
+iv1 = ivreg( return ~ trained*pressure +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code | trained*SA_gender+ pressure*SA_gender +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code ,data=ASTSNoBlanksT)
+summary(iv1, diagnostics=TRUE) # Wu Hausman not significant
+
+#trained as endogenous and SA_MaritalStatus as instrumental variable-we feel SA_MaritalStatus could be a instrumental variable as married will be more motivated to take jewellry trainings to improve their performace as compared to singles
+
+iv2 = ivreg( return ~ trained*pressure +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code | trained*SA_MartialStatus+ pressure*SA_MartialStatus +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code ,data=ASTSNoBlanksT)
+summary(iv2, diagnostics=TRUE)# Wu Hausman not significant and f-statistic for weak instruments is less than 10
+```
+
+
+#Endogeniety for model with TrainedTotal as key independent variable
+```{r}
+library(mfx)
+logitmfx(formula = return ~ TrainedTotal*pressure +net_purchase_amount+gender + age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + homeowner_code,data=ASTSNoBlanksT,robust=TRUE) 
+#we look at ggplot for interpretation
+
+summary(lm(formula = return ~ TrainedTotal*pressure +net_purchase_amount+gender + age_band +est_income_code+ annual_month_index+SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+pressure + homeowner_code,data=ASTSNoBlanksT))
+#coeffecients are quite similar
+library(AER)
+library(foreign)
+
+#trained total as endogenous and SA_gender as instrumental variable- we feel SA_gender could be a instrumental variable as females will be more motivated to take jewellry trainings as compared to male.
+
+iv1a = ivreg( return ~ TrainedTotal*pressure +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code | TrainedTotal*SA_gender +pressure*SA_gender +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code ,data=ASTSNoBlanksT)
+summary(iv1a, diagnostics=TRUE) # Wu Hausman not significant
+
+#trained as endogenous and SA_MaritalStatus as instrumental variable-we feel SA_MaritalStatus could be a instrumental variable as married will be more motivated to take jewellry trainings to improve their performace as compared to singles
+
+iv2a = ivreg( return ~ TrainedTotal*pressure +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code | TrainedTotal*SA_MartialStatus +pressure*SA_MartialStatus +net_purchase_amount+ gender + age_band +est_income_code+ annual_month_index+ SA_AssignmentCategory+ SA_YearsofService +MallSalesSF +TotalCases +StoreSqFt + MajorCompetitorPresent+ pressure + homeowner_code ,data=ASTSNoBlanksT)
+summary(iv2a, diagnostics=TRUE)# Wu Hausman not significant and f-statistic for weak instruments is less than 10
+```
+#Interpret the results USING TRAINED
+```{r}
+newData <- with(ASTSNoBlanksTNoNAs, data.frame(pressure = rep(seq(from = 1, to = 5, length.out =5), 2), trained = factor(rep(0:1, each = 5)) , gender = factor(1), age_band = factor(9), est_income_code = factor(4), annual_month_index = factor(2), SA_AssignmentCategory = factor(4),SA_YearsofService = mean(SA_YearsofService), MallSalesSF = mean(MallSalesSF), TotalCases = mean(TotalCases), StoreSqFt = mean(StoreSqFt), MajorCompetitorPresent = factor(1), homeowner_code = factor(1), net_purchase_amount = mean(net_purchase_amount)))
+
+prob<- predict(logit5, newdata = newData, type ="response")
+newData <- cbind(newData,prob )
+newDatapresent<-newData[c("trained","pressure","prob")]
+#the probability of return is less for trained when they apply more seling pressure
+library(AER)
+library(ggplot2)
+ggplot(newData, aes(x = pressure, y = prob)) + geom_line(aes(colour = trained), size = 1)
+#Insight:When a customer is pressured to buy by a trained salesperson, The probability of return reduces by 33 percentage points as compared to an untrained salesperson. Please note that 1->high pressure as per the survey script
+#This was the final result presented.Total number of trainings also gived similar results
+```
+
+#Interpret the results USING TRAINED TOTAL
+
+```{r}
+
+newData1 <- with(ASTSNoBlanksTNoNAs, data.frame(pressure = rep(seq(from = 1, to = 5, length.out =5), 8), TrainedTotal = rep(1:8,each=5) , gender = factor(1), age_band = factor(9), est_income_code = factor(4), annual_month_index = factor(2), SA_AssignmentCategory = factor(4),SA_YearsofService = mean(SA_YearsofService), MallSalesSF = mean(MallSalesSF), TotalCases = mean(TotalCases), StoreSqFt = mean(StoreSqFt), MajorCompetitorPresent = factor(1), homeowner_code = factor(1), net_purchase_amount = mean(net_purchase_amount)))
+
+prob1<- predict(logit5a, newdata = newData1, type ="response")
+newData1 <- cbind(newData1,prob1 )
+library(AER)
+library(ggplot2)
+ggplot(newData1, aes(x = TrainedTotal, group=pressure, colour=pressure, y = prob1)) + geom_line()
+#As the Number of trainings increases, the probability of return decreases
+```
